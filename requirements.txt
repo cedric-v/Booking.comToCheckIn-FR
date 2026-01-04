@@ -1,0 +1,9 @@
+# Optional dependencies for Excel file support
+# Install with: pip install openpyxl xlrd
+openpyxl>=3.0.0
+xlrd>=2.0.0
+
+# Note: The script works with CSV files using only Python standard library.
+# - openpyxl is needed for .xlsx files (Excel 2007+)
+# - xlrd is needed for .xls files (older Excel format)
+

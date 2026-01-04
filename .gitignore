@@ -1,0 +1,39 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+.venv
+
+# Output files
+*.csv
+!checkinfr_template.csv.example
+output_*.csv
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Personal files
+*.docx
+*.xlsx
+*.xls
+
+# Temporary/setup files (not needed in repository)
+GENERATE_2025.md
+GIT_SETUP.md
+RESUME_PREPARATION.md
+run_conversion_2025.sh
+setup_git.sh
+
