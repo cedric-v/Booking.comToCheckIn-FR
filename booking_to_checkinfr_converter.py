@@ -8,8 +8,9 @@ into CheckInFR import format.
 """
 
 import csv
+import re
 import sys
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 # Try to import openpyxl for XLSX support (optional)
@@ -36,13 +37,17 @@ output_file = "output_importation.csv"
 
 def convert_date(date_str):
     """
-    Convert date from YYYY-MM-DD format to DD-MM-YYYY format.
+    Convert a date to DD-MM-YYYY format.
     Removes HTML entities like &nbsp; from the date string.
-    Also handles Excel date serial numbers if passed as float.
-    
+    Handles:
+      - ISO-like strings: YYYY-MM-DD, YYYY-M-D (non-padded), YYYY/MM/DD, YYYY.MM.DD
+      - European order: DD/MM/YYYY, DD-MM-YYYY, DD.MM.YYYY
+      - Excel date serial numbers (float/int)
+      - datetime/date objects (e.g., from openpyxl date cells)
+
     Args:
-        date_str: Date string in YYYY-MM-DD format, or float (Excel serial number)
-        
+        date_str: Date string, float (Excel serial number), or datetime/date object
+
     Returns:
         Formatted date string in DD-MM-YYYY format, or empty string if conversion fails
     """
@@ -50,19 +55,38 @@ def convert_date(date_str):
         return ""
     
     try:
-        # Handle Excel date serial numbers (float)
+        # Handle Excel date serial numbers (float) - convert to a real date
         if isinstance(date_str, (int, float)) and date_str > 0:
-            # This is likely an Excel date serial number
-            # xlrd should have already converted it, but just in case
+            # Excel serial number: days since 1899-12-30 (accounts for the 1900 leap year bug)
+            converted = (datetime(1899, 12, 30) + timedelta(days=float(date_str))).date()
+            if 1900 <= converted.year <= 2200:
+                return converted.strftime("%d-%m-%Y")
             return ""
-        
+
+        # Handle datetime/date objects (e.g., from openpyxl date cells)
+        if isinstance(date_str, date):
+            return date_str.strftime("%d-%m-%Y")
+
         # Convert to string and remove HTML entities (&nbsp; or others)
         clean_date = str(date_str).replace("&nbsp;", "").strip()
-        
-        # Try YYYY-MM-DD format (most common from Booking.com)
-        if len(clean_date) >= 10:
-            return datetime.strptime(clean_date[:10], "%Y-%m-%d").strftime("%d-%m-%Y")
-        
+        if not clean_date:
+            return ""
+
+        # 1) ISO-like dates: YYYY-M-D with -, / or . separators, padded or not
+        #    Also matches strings with a trailing time part (e.g., "2024-06-15 10:30:00")
+        match = re.match(r"(\d{4})[-/.](-?\d{1,2})[-/.](-?\d{1,2})", clean_date)
+        if match:
+            year, month, day = match.groups()
+            normalized = f"{year}-{month.zfill(2)}-{day.zfill(2)}"
+            return datetime.strptime(normalized, "%Y-%m-%d").strftime("%d-%m-%Y")
+
+        # 2) European order: DD/MM/YYYY, DD-MM-YYYY, DD.MM.YYYY
+        for fmt in ("%d/%m/%Y", "%d-%m-%Y", "%d.%m.%Y"):
+            try:
+                return datetime.strptime(clean_date, fmt).strftime("%d-%m-%Y")
+            except ValueError:
+                continue
+
         return ""
     except Exception:
         return ""
@@ -70,10 +94,12 @@ def convert_date(date_str):
 def read_csv_file(file_path):
     """Read CSV file and return list of dictionaries."""
     rows = []
-    with open(file_path, "r", encoding="utf-8") as f:
+    with open(file_path, "r", encoding="utf-8-sig") as f:
         reader = csv.DictReader(f, delimiter=';')
         for row in reader:
-            rows.append(row)
+            # Skip completely empty rows
+            if any(row.values()):
+                rows.append(row)
     return rows
 
 def read_xlsx_file(file_path):
@@ -98,7 +124,9 @@ def read_xlsx_file(file_path):
         for idx, cell in enumerate(row):
             header = headers[idx] if idx < len(headers) else f"Column_{idx+1}"
             row_dict[header] = str(cell.value) if cell.value is not None else ""
-        rows.append(row_dict)
+        # Skip completely empty rows
+        if any(row_dict.values()):
+            rows.append(row_dict)
     
     return rows
 
@@ -134,11 +162,13 @@ def read_xls_file(file_path):
                         row_dict[header] = f"{date_tuple[0]}-{date_tuple[1]:02d}-{date_tuple[2]:02d}"
                     else:
                         row_dict[header] = str(cell_value)
-                except:
+                except Exception:
                     row_dict[header] = str(cell_value)
             else:
                 row_dict[header] = str(cell_value) if cell_value else ""
-        rows.append(row_dict)
+        # Skip completely empty rows
+        if any(row_dict.values()):
+            rows.append(row_dict)
     
     return rows
 
@@ -167,6 +197,35 @@ def read_source_file(file_path):
         print("Supported formats: .csv, .xls, .xlsx")
         sys.exit(1)
 
+def get_value(row, key, alt_keys=None):
+    """Get value from row, trying multiple key names."""
+    value = row.get(key, "")
+    if not value and alt_keys:
+        for alt_key in alt_keys:
+            value = row.get(alt_key, "")
+            if value:
+                break
+
+    # Convert to string and clean
+    if isinstance(value, float):
+        # Remove .0 from whole numbers
+        if value == int(value):
+            return str(int(value))
+        return str(value)
+    elif isinstance(value, int):
+        return str(value)
+    else:
+        # Handle string values that might be numbers
+        value_str = str(value).strip() if value else ""
+        # Check if string represents a whole number with .0 (e.g., "2.0")
+        try:
+            float_val = float(value_str)
+            if float_val == int(float_val):
+                return str(int(float_val))
+            return value_str
+        except (ValueError, TypeError):
+            return value_str
+
 def main():
     """Main conversion function."""
     # Use local variable for template file (may be updated if example template is used)
@@ -182,7 +241,7 @@ def main():
     if not Path(template_file_path).exists():
         # Try to use example template from project directory
         script_dir = Path(__file__).parent
-        example_template = script_dir / "template_checkinfr_example.csv"
+        example_template = script_dir / "checkinfr_template.csv.example"
         if example_template.exists():
             print(f"⚠️  Template file not found: {template_file_path}")
             print(f"   Using example template: {example_template}")
@@ -214,47 +273,20 @@ def main():
         for row in source_rows:
             # Map Booking.com columns (English) to CheckInFR fields
             # Try both English and French column names for compatibility
-            def get_value(key, alt_keys=None):
-                """Get value from row, trying multiple key names."""
-                value = row.get(key, "")
-                if not value and alt_keys:
-                    for alt_key in alt_keys:
-                        value = row.get(alt_key, "")
-                        if value:
-                            break
-                
-                # Convert to string and clean
-                if isinstance(value, float):
-                    # Remove .0 from whole numbers
-                    if value == int(value):
-                        return str(int(value))
-                    return str(value)
-                elif isinstance(value, int):
-                    return str(value)
-                else:
-                    # Handle string values that might be numbers
-                    value_str = str(value).strip() if value else ""
-                    # Check if string represents a whole number with .0 (e.g., "2.0")
-                    try:
-                        float_val = float(value_str)
-                        if float_val == int(float_val):
-                            return str(int(float_val))
-                        return value_str
-                    except (ValueError, TypeError):
-                        return value_str
-            
-            book_number = get_value("Book number", ["Numéro de réservation"])
-            check_in = get_value("Check-in", ["Arrivée&nbsp;", "Arrivée"])
-            check_out = get_value("Check-out", ["Départ&nbsp;", "Départ"])
-            guest_name = get_value("Guest name(s)", ["Nom du client"])
-            phone = get_value("Phone number", ["Numéro de téléphone"])
-            travel_purpose = get_value("Travel purpose", ["Motif du voyage"])
-            address = get_value("Address", ["Adresse"])
-            adults = get_value("Adults", ["Personnes"])
-            children = get_value("Children", ["Enfants"])
+            book_number = get_value(row, "Book number", ["Numéro de réservation"])
+            check_in = get_value(row, "Check-in", ["Arrivée&nbsp;", "Arrivée"])
+            check_out = get_value(row, "Check-out", ["Départ&nbsp;", "Départ"])
+            guest_name = get_value(row, "Guest name(s)", ["Nom du client"])
+            phone = get_value(row, "Phone number", ["Numéro de téléphone"])
+            travel_purpose = get_value(row, "Travel purpose", ["Motif du voyage"])
+            address = get_value(row, "Address", ["Adresse"])
+            adults = get_value(row, "Adults", ["Personnes"])
+            children = get_value(row, "Children", ["Enfants"])
             
             # Clean and structure data
-            name_parts = guest_name.split() if guest_name else []
+            # Heuristic: first word = last name, remainder = first name(s)
+            # maxsplit=1 keeps compound first names together (e.g., "Jean Pierre")
+            name_parts = guest_name.split(maxsplit=1) if guest_name else []
             
             reservations.append({
                 "Numéro de référence externe": book_number,

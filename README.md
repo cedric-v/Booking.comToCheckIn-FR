@@ -9,7 +9,7 @@ This script processes reservation data exported from Booking.com (in CSV, XLS, o
 ## Features
 
 - Converts Booking.com CSV exports to CheckInFR import format
-- Handles date format conversion (YYYY-MM-DD to DD-MM-YYYY)
+- Handles date format conversion (multiple input formats to DD-MM-YYYY, incl. Excel serial numbers)
 - Cleans HTML entities (e.g., `&nbsp;`) from date fields
 - Maps Booking.com fields to CheckInFR required fields:
   - External reference number
@@ -47,6 +47,8 @@ This script processes reservation data exported from Booking.com (in CSV, XLS, o
 2. **Prepare your files:**
    - Have your Booking.com export file (CSV, XLS, or XLSX format)
    - Have a CheckInFR template CSV file ready (this defines the output column structure)
+   
+   **Note**: If no template file is provided, the script automatically falls back to the example template `checkinfr_template.csv.example` included in the repository.
    
    **Note**: If using XLSX or XLS files, install the optional dependencies:
    ```bash
@@ -102,7 +104,14 @@ This script processes reservation data exported from Booking.com (in CSV, XLS, o
 
 ## Date Format
 
-The script automatically converts dates from `YYYY-MM-DD` format (Booking.com) to `DD-MM-YYYY` format (CheckInFR).
+The script automatically converts dates to `DD-MM-YYYY` format (CheckInFR). It handles:
+
+- ISO-like formats: `YYYY-MM-DD`, `YYYY-M-D` (non-padded), `YYYY/MM/DD`, `YYYY.MM.DD`
+- European order: `DD/MM/YYYY`, `DD-MM-YYYY`, `DD.MM.YYYY`
+- Excel date serial numbers and `datetime` objects (from XLS/XLSX files)
+- HTML entities (e.g., `&nbsp;`) in date fields
+
+Invalid or empty dates are returned as empty strings.
 
 ## Notes
 
@@ -119,7 +128,13 @@ The script automatically converts dates from `YYYY-MM-DD` format (Booking.com) t
    cd Booking.comToCheckIn-FR
    ```
 
-2. **Optional**: If you plan to use XLSX or XLS files, install the optional dependencies:
+2. **Optional**: If you plan to use XLSX or XLS files, install the optional dependencies
+   (versions are pinned in `requirements.txt` for reproducibility):
+   ```bash
+   pip install -r requirements.txt
+   ```
+   
+   Or install them individually:
    ```bash
    pip install openpyxl xlrd
    ```
@@ -130,13 +145,14 @@ The script automatically converts dates from `YYYY-MM-DD` format (Booking.com) t
 
 ```
 Booking.comToCheckIn-FR/
-├── booking_to_checkinfr_converter.py             # Main conversion script
-├── README.md                                      # This file
-├── .gitignore                                     # Git ignore rules
-├── requirements.txt                               # Dependencies (none required)
-├── setup_git.sh                                   # Git setup script
-├── GIT_SETUP.md                                   # Git setup instructions
-└── LISEZMOI - script décompte nuiteés.docx      # Original French documentation
+├── booking_to_checkinfr_converter.py   # Main conversion script
+├── checkinfr_template.csv.example      # Example CheckInFR template (fallback if no template given)
+├── requirements.txt                    # Optional dependencies (openpyxl, xlrd)
+├── renovate.json                       # Renovate dependency-update configuration
+├── .pre-commit-config.yaml             # Pre-commit hooks (gitleaks)
+├── .gitignore                          # Git ignore rules
+├── LICENSE                             # BSD 3-Clause license
+└── README.md                           # This file
 ```
 
 ## License
