@@ -2,6 +2,39 @@
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": [
     "config:recommended",
-    ":automergeMinor"
+    ":automergeMinor",
+    "helpers:pinGitHubActionDigests",
+    ":automergeRequireAllStatusChecks"
+  ],
+  "osvVulnerabilityAlerts": true,
+  "vulnerabilityAlerts": {
+    "enabled": true,
+    "labels": [
+      "security"
+    ],
+    "schedule": [
+      "at any time"
+    ],
+    "automerge": true
+  },
+  "minimumReleaseAge": "7 days",
+  "packageRules": [
+    {
+      "description": "Patchs et mineures : automerge si la CI est verte",
+      "matchUpdateTypes": [
+        "minor",
+        "patch",
+        "pin",
+        "digest"
+      ],
+      "automerge": true
+    },
+    {
+      "description": "Majeures : revue humaine obligatoire (rupture possible)",
+      "matchUpdateTypes": [
+        "major"
+      ],
+      "automerge": false
+    }
   ]
 }
